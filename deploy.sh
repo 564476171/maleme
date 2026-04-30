@@ -116,8 +116,7 @@ prompt_admin_password() {
   fi
 
   if ! is_interactive; then
-    echo "ADMIN_PASSWORD is required. Run interactively, or use:" >&2
-    echo "ADMIN_PASSWORD='your-password' ./deploy.sh" >&2
+    echo "ADMIN_PASSWORD is required. Set it in .env before starting." >&2
     exit 1
   fi
 

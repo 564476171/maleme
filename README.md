@@ -20,16 +20,39 @@
 ```sh
 git clone https://github.com/564476171/maleme.git
 cd maleme
+cp .env.example .env
+nano .env
+docker compose up --build -d
+```
+
+在 `.env` 里只需要先填管理员密码：
+
+```env
+ADMIN_PASSWORD=你自己设定的管理员密码
+```
+
+默认对外端口是 `6088`。数据库连接会由 Compose 自动配置，数据库不暴露到公网；`APP_SECRET` 会在容器内自动生成并保存到 Docker volume。
+
+如果你还想改管理员邮箱或端口，直接改 `.env`：
+
+```env
+ADMIN_EMAIL=me@example.com
+APP_PORT=6088
+```
+
+然后启动：
+
+```sh
+docker compose up --build -d
+```
+
+也可以继续用懒人脚本：
+
+```sh
 ./deploy.sh
 ```
 
-第一次运行会自动生成 `.env`，包括数据库密码、`DATABASE_URL` 和 `APP_SECRET`。管理员初始密码会在终端里提示你自己输入，并保存在服务器的 `.env` 里。
-
-如果你在 CI 或非交互终端里启动，可以这样指定管理员密码：
-
-```sh
-ADMIN_PASSWORD='你的管理员密码' ./deploy.sh
-```
+脚本会提示你输入管理员初始密码。
 
 访问：
 
@@ -55,16 +78,16 @@ node scripts/bootstrap.mjs
 常用命令：
 
 ```sh
-./deploy.sh logs
-./deploy.sh ps
-./deploy.sh stop
+docker compose logs -f app
+docker compose ps
+docker compose down
 ```
 
 以后更新代码：
 
 ```sh
 git pull
-./deploy.sh
+docker compose up --build -d
 ```
 
 ## 本地开发
@@ -100,5 +123,5 @@ npm run build
 
 ```sh
 docker compose down -v
-./deploy.sh
+docker compose up --build -d
 ```

@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-maleme}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./deploy.sh first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-maleme}
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
@@ -19,15 +19,19 @@ services:
       context: .
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Run ./deploy.sh first}
-      APP_SECRET: ${APP_SECRET:?Run ./deploy.sh first}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-maleme}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-maleme}?schema=public
+      APP_SECRET: ${APP_SECRET:-}
+      APP_SECRET_FILE: /data/app-secret
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run ./deploy.sh first}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env before running docker compose up}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - '${APP_PORT:-6088}:3000'
+    volumes:
+      - app-data:/data
 
 volumes:
+  app-data:
   postgres-data:
