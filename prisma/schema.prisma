@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  VIP
+  ADMIN
+}
+
+enum RegistrationMode {
+  OPEN
+  INVITE
+  CLOSED
+}
+
+enum ProviderScope {
+  USER
+  ADMIN
+}
+
+enum ContentType {
+  DAILY_ROAST
+  DAILY_TASK
+}
+
+model User {
+  id              String          @id @default(cuid())
+  email           String          @unique
+  passwordHash    String
+  role            UserRole        @default(USER)
+  disabled        Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  sessions        Session[]
+  providerConfigs ProviderConfig[]
+  checkIns        CheckIn[]
+  aiReflections   AiReflection[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ProviderConfig {
+  id              String        @id @default(cuid())
+  configKey       String        @unique
+  scope           ProviderScope
+  userId          String?
+  name            String
+  baseUrl         String
+  chatUrl         String
+  modelsUrl       String
+  model           String
+  apiKeyEncrypted String?
+  apiKeyHint      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scope])
+  @@index([userId])
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model InviteCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  role      UserRole @default(USER)
+  maxUses   Int      @default(1)
+  usedCount Int      @default(0)
+  disabled  Boolean  @default(false)
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BrotherPersona {
+  id          String   @id
+  name        String
+  mbti        String?
+  description String
+  catchphrase String?
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ContentItem {
+  id        String      @id @default(cuid())
+  type      ContentType
+  content   String
+  enabled   Boolean     @default(true)
+  sortOrder Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([type, enabled])
+}
+
+model CheckIn {
+  id        String   @id @default(cuid())
+  userId    String?
+  dateKey   String
+  answers   Json
+  score     Int
+  level     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@index([dateKey])
+}
+
+model AiReflection {
+  id        String   @id @default(cuid())
+  userId    String?
+  mode      String
+  input     String
+  output    Json
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
