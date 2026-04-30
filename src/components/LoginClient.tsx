@@ -4,13 +4,15 @@ import { FormEvent, useState } from 'react'
 import Link from 'next/link'
 
 export default function LoginClient({
+  initialError = '',
   registrationMode,
 }: {
+  initialError?: string
   registrationMode: 'OPEN' | 'INVITE' | 'CLOSED'
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError)
   const [loading, setLoading] = useState(false)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -43,11 +45,18 @@ export default function LoginClient({
       <section className="auth-panel">
         <p className="eyebrow">骂了么</p>
         <h1>先登录，再清醒。</h1>
-        <form className="auth-form" onSubmit={submit}>
+        <form
+          action="/api/auth/login"
+          className="auth-form"
+          method="post"
+          onSubmit={submit}
+        >
           <label>
             <span>邮箱</span>
             <input
               autoComplete="email"
+              name="email"
+              required
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -57,6 +66,8 @@ export default function LoginClient({
             <span>密码</span>
             <input
               autoComplete="current-password"
+              name="password"
+              required
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
