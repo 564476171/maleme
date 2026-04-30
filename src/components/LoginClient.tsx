@@ -20,11 +20,15 @@ export default function LoginClient({
     setLoading(true)
     setError('')
 
+    const formData = new FormData(event.currentTarget)
+    const formEmail = String(formData.get('email') ?? '')
+    const formPassword = String(formData.get('password') ?? '')
+
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: formEmail, password: formPassword }),
       })
       const payload = await response.json()
 
