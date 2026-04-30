@@ -2,12 +2,10 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-maleme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./deploy.sh first}
+      POSTGRES_DB: ${POSTGRES_DB:-maleme}
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
@@ -20,18 +18,16 @@ services:
     build:
       context: .
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      APP_SECRET: ${APP_SECRET}
-      ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL:?Run ./deploy.sh first}
+      APP_SECRET: ${APP_SECRET:?Run ./deploy.sh first}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run ./deploy.sh first}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - '3000:3000'
+      - '${APP_PORT:-6088}:3000'
 
 volumes:
   postgres-data:

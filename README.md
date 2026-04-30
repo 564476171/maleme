@@ -18,33 +18,29 @@
 ## Docker Compose 部署
 
 ```sh
-cp .env.example .env
+git clone https://github.com/564476171/maleme.git
+cd maleme
+./deploy.sh
 ```
 
-编辑 `.env`：
+第一次运行会自动生成 `.env`，包括数据库密码、`DATABASE_URL` 和 `APP_SECRET`。管理员初始密码会在终端里提示你自己输入，并保存在服务器的 `.env` 里。
+
+如果你在 CI 或非交互终端里启动，可以这样指定管理员密码：
 
 ```sh
-APP_SECRET=至少32位随机字符串
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=换成强密码
-```
-
-启动：
-
-```sh
-docker compose up --build
+ADMIN_PASSWORD='你的管理员密码' ./deploy.sh
 ```
 
 访问：
 
 ```text
-http://localhost:3000
+http://localhost:6088
 ```
 
 后台：
 
 ```text
-http://localhost:3000/admin
+http://localhost:6088/admin
 ```
 
 容器启动时会自动执行：
@@ -55,6 +51,21 @@ node scripts/bootstrap.mjs
 ```
 
 `bootstrap` 会创建/更新管理员账号，并初始化默认兄弟人设和文案。
+
+常用命令：
+
+```sh
+./deploy.sh logs
+./deploy.sh ps
+./deploy.sh stop
+```
+
+以后更新代码：
+
+```sh
+git pull
+./deploy.sh
+```
 
 ## 本地开发
 
@@ -89,5 +100,5 @@ npm run build
 
 ```sh
 docker compose down -v
-docker compose up --build
+./deploy.sh
 ```
