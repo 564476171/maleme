@@ -33,6 +33,18 @@ ADMIN_PASSWORD=你自己设定的管理员密码
 
 默认对外端口是 `6088`。数据库连接会由 Compose 自动配置，数据库不暴露到公网；`APP_SECRET` 会在容器内自动生成并保存到 Docker volume。
 
+当前默认适配直接用 HTTP 访问，例如 `http://服务器IP:6088`，所以 `.env` 里保持：
+
+```env
+COOKIE_SECURE=false
+```
+
+如果以后你加了 HTTPS 反向代理，再改成：
+
+```env
+COOKIE_SECURE=true
+```
+
 如果你还想改管理员邮箱或端口，直接改 `.env`：
 
 ```env

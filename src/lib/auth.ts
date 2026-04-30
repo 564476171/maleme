@@ -11,6 +11,7 @@ import {
 
 export const sessionCookieName = 'maleme_session'
 const sessionDays = 30
+const secureCookie = process.env.COOKIE_SECURE === 'true'
 
 export type SafeUser = Pick<
   User,
@@ -43,7 +44,7 @@ export async function createSession(userId: string) {
   cookieStore.set(sessionCookieName, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: secureCookie,
     path: '/',
     expires: expiresAt,
   })
