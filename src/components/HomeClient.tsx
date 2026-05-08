@@ -347,7 +347,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
       </header>
 
       {settingsOpen ? (
-        <section className="settings-panel">
+        <section className="settings-panel paper-card">
           <div className="section-title">
             <KeyRound size={20} />
             <div>
@@ -433,7 +433,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
       ) : null}
 
       <section className="dashboard">
-        <div className="daily-panel">
+        <div className="daily-panel hero-note">
           <p className="eyebrow">今日清醒提醒</p>
           <h1>别问她爱不爱你，先问你今天清醒了吗。</h1>
           <p className="roast">{dailyRoast}</p>
@@ -443,7 +443,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
           </div>
         </div>
 
-        <aside className="meter-panel" aria-label="今日恋爱脑指数">
+        <aside className="meter-panel sticky-note" aria-label="今日恋爱脑指数">
           <div className="meter-head">
             <span>恋爱脑指数</span>
             <strong>{currentScore}/12</strong>
@@ -466,7 +466,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
       </section>
 
       <section className="workbench">
-        <form className="panel checkin-panel" onSubmit={submitCheckIn}>
+        <form className="panel checkin-panel tape-card" onSubmit={submitCheckIn}>
           <div className="section-title">
             <Activity size={20} />
             <div>
@@ -507,7 +507,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
           </button>
         </form>
 
-        <section className="panel ai-panel">
+        <section className="panel ai-panel tack-card">
           <div className="section-title">
             <Brain size={20} />
             <div>
@@ -632,7 +632,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
         </section>
       </section>
 
-      <section className="history-panel">
+      <section className="history-panel tape-card">
         <div className="section-title">
           <MessageCircle size={20} />
           <div>

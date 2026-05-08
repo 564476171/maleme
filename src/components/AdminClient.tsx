@@ -279,7 +279,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
 
       {overview ? (
         <section className="admin-grid">
-          <section className="panel">
+          <section className="panel tape-card admin-card">
             <h2>注册策略</h2>
             <div className="button-row">
               {(['OPEN', 'INVITE', 'CLOSED'] as const).map((mode) => (
@@ -308,7 +308,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
             </div>
           </section>
 
-          <section className="panel">
+          <section className="panel tack-card admin-card">
             <h2>管理员模型</h2>
             <form className="settings-form" onSubmit={saveAdminProvider}>
               <label>
@@ -380,7 +380,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
             </form>
           </section>
 
-          <section className="panel wide-panel">
+          <section className="panel wide-panel tape-card admin-card">
             <h2>用户管理</h2>
             <div className="admin-table">
               {overview.users.map((user) => (
@@ -466,7 +466,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
             </div>
           </section>
 
-          <section className="panel">
+          <section className="panel tape-card admin-card">
             <h2>邀请码</h2>
             <form className="settings-form" onSubmit={createInvite}>
               <label>
@@ -521,7 +521,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
             </div>
           </section>
 
-          <section className="panel">
+          <section className="panel tack-card admin-card">
             <h2>内容管理</h2>
             <form className="settings-form" onSubmit={createContent}>
               <label>
@@ -599,7 +599,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
             </div>
           </section>
 
-          <section className="panel wide-panel">
+          <section className="panel wide-panel tape-card admin-card">
             <h2>兄弟人设</h2>
             <form className="settings-form brother-form" onSubmit={saveBrother}>
               <label>
@@ -741,7 +741,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
             </div>
           </section>
 
-          <section className="panel wide-panel">
+          <section className="panel wide-panel tack-card admin-card">
             <h2>记录管理</h2>
             <div className="admin-table">
               {overview.reflections.slice(0, 20).map((item) => (
@@ -771,7 +771,7 @@ export default function AdminClient({ currentUser }: { currentUser: AppUser }) {
             </div>
           </section>
 
-          <section className="panel status-panel">
+          <section className="panel status-panel tape-card admin-card">
             <ShieldCheck size={32} />
             <h2>后台状态</h2>
             <p>用户、VIP、邀请码、模型、内容和记录都已接入数据库。</p>
