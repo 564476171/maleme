@@ -46,7 +46,7 @@ export default function LoginClient({
 
   return (
     <main className="auth-shell">
-      <section className="auth-panel tape-card">
+      <section className="auth-panel">
         <p className="eyebrow">骂了么</p>
         <h1>先登录，再清醒。</h1>
         <form

@@ -15,6 +15,23 @@ export const aiRequestSchema = z.object({
   brotherIds: z.array(z.string()).default([]),
 })
 
+export const chatMessageSchema = z.object({
+  role: z.enum(['user', 'assistant', 'system']),
+  name: z.string().trim().max(80).optional(),
+  content: z.string().trim().max(2000),
+  brotherId: z.string().trim().max(80).optional(),
+})
+
+export const aiChatRequestSchema = z.object({
+  mode: z.enum(['broGroup', 'directReply']),
+  input: z.string().trim().min(1).max(1200),
+  providerSource: z.enum(['user', 'admin']).default('user'),
+  brotherIds: z.array(z.string()).default([]),
+  messages: z.array(chatMessageSchema).max(30).default([]),
+})
+
+export type AiChatMessage = z.infer<typeof chatMessageSchema>
+
 const riskWords = [
   '自杀',
   '不想活',
@@ -143,7 +160,7 @@ function parseAiResult(mode: AiMode, text: string, brothers: BrotherPersona[]) {
   } satisfies AiResult
 }
 
-function buildSystemPrompt(mode: AiMode, brothers: BrotherPersona[]) {
+export function buildSystemPrompt(mode: AiMode, brothers: BrotherPersona[]) {
   const shared = [
     '你是“骂了么”，一个帮助用户从暧昧脑补、恋爱脑上头和不确定性奖励里清醒下来的中文助手。',
     '风格是嘴毒但关心：好笑、扎心、短句、有兄弟感，但不要羞辱用户。',
@@ -170,6 +187,156 @@ function buildSystemPrompt(mode: AiMode, brothers: BrotherPersona[]) {
     '当前模式：直接回复模式。直接生成一段清醒文案，包含现实判断、嘴毒提醒和下一步行动。',
     '只输出 JSON：{"content":"..."}。',
   ].join('\n')
+}
+
+function formatChatHistory(messages: AiChatMessage[]) {
+  return messages
+    .slice(-14)
+    .map((message) => {
+      const name = message.name ? `${message.name}：` : ''
+      const role =
+        message.role === 'user'
+          ? '用户'
+          : message.role === 'assistant'
+            ? '助手'
+            : '系统'
+
+      return `${role}${name}${message.content}`
+    })
+    .join('\n')
+}
+
+export function buildFollowUpSystemPrompt({
+  mode,
+  brother,
+}: {
+  mode: AiMode
+  brother?: BrotherPersona
+}) {
+  const shared = [
+    '你是“骂了么”，帮助用户从暧昧脑补、恋爱脑上头和不确定性奖励里清醒下来。',
+    '风格是嘴毒但关心：好笑、扎心、短句、有兄弟感，但不要羞辱用户。',
+    '不要攻击 ENFP、女性、任何人格类型或具体对象。重点放在用户自己的模式。',
+    '不要替对方确认喜欢或不喜欢。只区分事实、脑补和可执行行动。',
+    '不要鼓励骚扰、试探、跟踪、威胁或突破边界。',
+    '这是多轮对话 follow-up。直接输出自然中文，不要 JSON，不要 Markdown 表格。',
+  ]
+
+  if (mode === 'broGroup' && brother) {
+    return [
+      ...shared,
+      `你现在只扮演兄弟 ${brother.name}${brother.mbti ? `（${brother.mbti}）` : ''}。`,
+      `人设：${brother.description}`,
+      `常用语气：${brother.catchphrase || '无'}`,
+      '只代表这个兄弟发言，不要替其他兄弟发言。',
+      '回复控制在 80-180 字，先骂醒，再给下一步。',
+    ].join('\n')
+  }
+
+  return [
+    ...shared,
+    '当前是直接回复模式。回复控制在 100-220 字，包含现实判断、嘴毒提醒和下一步行动。',
+  ].join('\n')
+}
+
+export function buildFollowUpMessages({
+  mode,
+  input,
+  messages,
+  brother,
+}: {
+  mode: AiMode
+  input: string
+  messages: AiChatMessage[]
+  brother?: BrotherPersona
+}) {
+  const history = formatChatHistory(messages)
+
+  return [
+    {
+      role: 'system',
+      content: buildFollowUpSystemPrompt({ mode, brother }),
+    },
+    {
+      role: 'user',
+      content: [
+        history ? `历史对话：\n${history}` : '历史对话：无',
+        `用户最新追问：${input}`,
+        '请基于历史上下文继续骂醒，不要重复上一轮原话。',
+      ].join('\n\n'),
+    },
+  ]
+}
+
+export async function createChatCompletionStream({
+  provider,
+  messages,
+}: {
+  provider: ProviderConfig
+  messages: { role: string; content: string }[]
+}) {
+  const response = await fetch(provider.chatUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getProviderApiKey(provider)}`,
+    },
+    body: JSON.stringify({
+      model: provider.model,
+      temperature: 0.82,
+      stream: true,
+      messages,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`模型调用失败：${response.status}`)
+  }
+
+  if (!response.body) {
+    throw new Error('模型没有返回可读取的 stream')
+  }
+
+  return response.body
+}
+
+export async function* readOpenAiStream(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<string> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+
+      if (!trimmed.startsWith('data:')) continue
+
+      const data = trimmed.slice(5).trim()
+
+      if (!data || data === '[DONE]') continue
+
+      try {
+        const payload = JSON.parse(data)
+        const delta = payload?.choices?.[0]?.delta?.content
+
+        if (typeof delta === 'string' && delta) {
+          yield delta
+        }
+      } catch {
+        // Ignore malformed provider chunks and keep the stream alive.
+      }
+    }
+  }
 }
 
 export async function generateAiResponse({

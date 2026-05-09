@@ -45,7 +45,7 @@ export default function RegisterClient({
 
   return (
     <main className="auth-shell">
-      <section className="auth-panel tape-card">
+      <section className="auth-panel">
         <p className="eyebrow">骂了么</p>
         <h1>注册一个清醒账号。</h1>
         <form className="auth-form" onSubmit={submit}>
