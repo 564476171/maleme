@@ -28,6 +28,10 @@ import {
   type BrotherPersona,
   type ProviderSummary,
 } from '@/lib/content'
+import {
+  createThinkingContentFilter,
+  stripThinkingContent,
+} from '@/lib/thinking-filter'
 
 type CheckInRecord = {
   id: string
@@ -39,11 +43,20 @@ type CheckInRecord = {
   updatedAt: string
 }
 
+type AiHistoryRecord = {
+  id: string
+  mode: string
+  input: string
+  output: unknown
+  createdAt: string
+}
+
 type Stats = {
   today: CheckInRecord | null
   consecutiveClearDays: number
   relapseCount: number
   history: CheckInRecord[]
+  aiHistory: AiHistoryRecord[]
   dailyContent: {
     dailyRoast: string
     dailyTask: string
@@ -96,6 +109,14 @@ function providerFormFromSummary(provider?: ProviderSummary): ProviderForm {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function getHistoryMode(record: AiHistoryRecord): AiMode {
+  return record.mode.startsWith('broGroup') ? 'broGroup' : 'directReply'
+}
+
 export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
   const [activeView, setActiveView] = useState<HomeView>('overview')
   const [answers, setAnswers] = useState(createEmptyAnswers)
@@ -110,6 +131,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
   const [input, setInput] = useState('')
   const [providerSource, setProviderSource] = useState<'user' | 'admin'>('user')
   const [selectedBrotherIds, setSelectedBrotherIds] = useState<string[]>([])
+  const [activeBrotherInfoId, setActiveBrotherInfoId] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [followUpBrotherIds, setFollowUpBrotherIds] = useState<string[]>([])
   const [followUpInput, setFollowUpInput] = useState('')
@@ -138,6 +160,9 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
     : DEFAULT_BROTHERS
   const selectedBrothers = brothers.filter((brother) =>
     selectedBrotherIds.includes(brother.id),
+  )
+  const activeBrotherInfo = brothers.find(
+    (brother) => brother.id === activeBrotherInfoId,
   )
   const canUseAdminProvider =
     (user.role === 'VIP' || user.role === 'ADMIN') &&
@@ -277,7 +302,20 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
     setChatMessages((current) =>
       current.map((message) =>
         message.id === messageId
-          ? { ...message, content: `${message.content}${delta}` }
+          ? {
+              ...message,
+              content: stripThinkingContent(`${message.content}${delta}`),
+            }
+          : message,
+      ),
+    )
+  }
+
+  function setMessageContent(messageId: string, content: string) {
+    setChatMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? { ...message, content: stripThinkingContent(content) }
           : message,
       ),
     )
@@ -292,15 +330,33 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
   }
 
   function upsertSystemMessage(messageId: string, content: string) {
-    setChatMessages((current) => [
-      ...current,
-      {
-        id: messageId,
-        role: 'system',
-        tone: 'warning',
-        content,
-      },
-    ])
+    setChatMessages((current) => {
+      const cleanedContent = stripThinkingContent(content)
+
+      if (current.some((message) => message.id === messageId)) {
+        return current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                role: 'system',
+                tone: 'warning',
+                content: cleanedContent,
+                streaming: false,
+              }
+            : message,
+        )
+      }
+
+      return [
+        ...current,
+        {
+          id: messageId,
+          role: 'system',
+          tone: 'warning',
+          content: cleanedContent,
+        },
+      ]
+    })
   }
 
   function parseSseEvents(buffer: string) {
@@ -351,7 +407,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
           .map((message) => ({
             role: message.role,
             name: message.name,
-            content: message.content,
+            content: stripThinkingContent(message.content),
             brotherId: message.brotherId,
           })),
       }),
@@ -364,7 +420,54 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
+    const messageFilters = new Map<string, ReturnType<typeof createThinkingContentFilter>>()
+    const messageContents = new Map<string, string>()
     let buffer = ''
+
+    function ensureFilter(messageId: string) {
+      const existing = messageFilters.get(messageId)
+
+      if (existing) {
+        return existing
+      }
+
+      const filter = createThinkingContentFilter()
+      messageFilters.set(messageId, filter)
+
+      return filter
+    }
+
+    function appendVisibleDelta(messageId: string, delta: string) {
+      const filter = ensureFilter(messageId)
+      const visibleDelta = filter.push(delta)
+
+      if (!visibleDelta) {
+        return
+      }
+
+      const nextContent = `${messageContents.get(messageId) ?? ''}${visibleDelta}`
+      messageContents.set(messageId, nextContent)
+      appendToMessage(messageId, visibleDelta)
+    }
+
+    function flushVisibleContent(messageId: string) {
+      const filter = messageFilters.get(messageId)
+
+      if (!filter) {
+        return
+      }
+
+      const flushed = filter.flush()
+
+      if (flushed) {
+        const nextContent = `${messageContents.get(messageId) ?? ''}${flushed}`
+        messageContents.set(messageId, nextContent)
+      }
+
+      setMessageContent(messageId, messageContents.get(messageId) ?? '')
+      messageFilters.delete(messageId)
+      messageContents.delete(messageId)
+    }
 
     while (true) {
       const { value, done } = await reader.read()
@@ -401,16 +504,19 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
               streaming: true,
             },
           ])
+          ensureFilter(messageId)
+          messageContents.set(messageId, '')
         }
 
         if (
           item.event === 'message_delta' &&
           typeof item.data.delta === 'string'
         ) {
-          appendToMessage(messageId, item.data.delta)
+          appendVisibleDelta(messageId, item.data.delta)
         }
 
         if (item.event === 'message_done') {
+          flushVisibleContent(messageId)
           finishMessage(messageId)
         }
 
@@ -418,10 +524,16 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
           (item.event === 'warning' || item.event === 'error') &&
           typeof item.data.content === 'string'
         ) {
+          flushVisibleContent(messageId)
           upsertSystemMessage(messageId, item.data.content)
           finishMessage(messageId)
         }
       }
+    }
+
+    for (const messageId of messageFilters.keys()) {
+      flushVisibleContent(messageId)
+      finishMessage(messageId)
     }
   }
 
@@ -466,6 +578,94 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
     } finally {
       setIsFollowUpGenerating(false)
     }
+  }
+
+  function restoreAiHistory(record: AiHistoryRecord) {
+    const restoredMode = getHistoryMode(record)
+    const output = isRecord(record.output) ? record.output : {}
+    const messages: ChatMessage[] = [
+      {
+        id: `history-user-${record.id}`,
+        role: 'user',
+        name: '你',
+        content: stripThinkingContent(record.input),
+      },
+    ]
+    let restoredBrotherIds = selectedBrotherIds.length
+      ? selectedBrotherIds
+      : brothers.map((brother) => brother.id)
+
+    if (restoredMode === 'broGroup') {
+      const replies = Array.isArray(output.replies) ? output.replies : []
+      const validReplies = replies.filter(isRecord)
+
+      if (validReplies.length) {
+        messages.push(
+          ...validReplies.map((reply, index) => {
+            const brotherId =
+              typeof reply.brotherId === 'string' ? reply.brotherId : undefined
+            const knownBrother = brotherId
+              ? brothers.find((brother) => brother.id === brotherId)
+              : undefined
+
+            return {
+              id: `history-assistant-${record.id}-${brotherId ?? index}`,
+              role: 'assistant' as const,
+              name:
+                typeof reply.name === 'string'
+                  ? reply.name
+                  : knownBrother?.name ?? '兄弟',
+              brotherId,
+              content: stripThinkingContent(
+                typeof reply.content === 'string' ? reply.content : '',
+              ),
+            }
+          }),
+        )
+      }
+
+      const historyBrotherIds = validReplies
+        .map((reply) =>
+          typeof reply.brotherId === 'string' ? reply.brotherId : null,
+        )
+        .filter(Boolean) as string[]
+
+      if (historyBrotherIds.length) {
+        restoredBrotherIds = Array.from(new Set(historyBrotherIds))
+      }
+    } else if (typeof output.content === 'string') {
+      messages.push({
+        id: `history-assistant-${record.id}`,
+        role: 'assistant',
+        name: '直接回复',
+        content: stripThinkingContent(output.content),
+      })
+    } else if (Array.isArray(output.replies)) {
+      const replyText = output.replies
+        .filter(isRecord)
+        .map((reply) =>
+          stripThinkingContent(
+            typeof reply.content === 'string' ? reply.content : '',
+          ),
+        )
+        .filter(Boolean)
+        .join('\n\n')
+
+      if (replyText) {
+        messages.push({
+          id: `history-assistant-${record.id}`,
+          role: 'assistant',
+          name: '骂了么',
+          content: replyText,
+        })
+      }
+    }
+
+    setMode(restoredMode)
+    setChatMessages(messages)
+    setFollowUpBrotherIds(restoredMode === 'broGroup' ? restoredBrotherIds : [])
+    setFollowUpInput('')
+    setDrawerOpen(true)
   }
 
   async function saveProvider(event: FormEvent<HTMLFormElement>) {
@@ -535,7 +735,7 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell view-${activeView}`}>
       <header className="topbar">
         <Link className="brand" href="/" aria-label="骂了么首页">
           <span className="brand-mark" aria-hidden="true">
@@ -743,28 +943,63 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
             </div>
 
             {mode === 'broGroup' ? (
-              <div className="brother-picker">
-                {brothers.map((brother) => (
-                  <label key={brother.id}>
-                    <input
-                      checked={selectedBrotherIds.includes(brother.id)}
-                      type="checkbox"
-                      onChange={(event) =>
-                        setSelectedBrotherIds((current) =>
-                          event.target.checked
-                            ? [...current, brother.id]
-                            : current.filter((id) => id !== brother.id),
-                        )
-                      }
-                    />
-                    <span>
-                      <strong>{brother.name}</strong>
-                      {brother.mbti ? <em>{brother.mbti}</em> : null}
-                      {brother.description}
-                    </span>
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="brother-picker">
+                  {brothers.map((brother) => {
+                    const checked = selectedBrotherIds.includes(brother.id)
+                    const active = activeBrotherInfo?.id === brother.id
+
+                    return (
+                      <div
+                        className={`brother-option ${active ? 'info-active' : ''}`}
+                        key={brother.id}
+                      >
+                        <label>
+                          <input
+                            checked={checked}
+                            type="checkbox"
+                            onChange={(event) =>
+                              setSelectedBrotherIds((current) =>
+                                event.target.checked
+                                  ? [...current, brother.id]
+                                  : current.filter((id) => id !== brother.id),
+                              )
+                            }
+                          />
+                          <span>
+                            <strong>{brother.name}</strong>
+                            {brother.mbti ? <em>{brother.mbti}</em> : null}
+                            <small>{brother.description}</small>
+                          </span>
+                        </label>
+                        <button
+                          aria-expanded={active}
+                          className="brother-info-button"
+                          type="button"
+                          onClick={() =>
+                            setActiveBrotherInfoId((current) =>
+                              current === brother.id ? '' : brother.id,
+                            )
+                          }
+                        >
+                          {active ? '收起' : '介绍'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+                {activeBrotherInfo ? (
+                  <aside className="brother-preview" aria-live="polite">
+                    <div>
+                      <strong>{activeBrotherInfo.name}</strong>
+                      {activeBrotherInfo.mbti ? (
+                        <span>{activeBrotherInfo.mbti}</span>
+                      ) : null}
+                    </div>
+                    <p>{activeBrotherInfo.description}</p>
+                  </aside>
+                ) : null}
+              </>
             ) : null}
 
             <form className="ai-form" onSubmit={submitAi}>
@@ -801,18 +1036,53 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
                 <h2>别让复发悄悄变成连续剧。</h2>
               </div>
             </div>
-            <div className="history-list">
-              {stats?.history.length ? (
-                stats.history.map((item) => (
-                  <div className="history-row" key={item.id}>
-                    <span>{item.dateKey}</span>
-                    <strong>{item.score}/12</strong>
-                    <em>{item.level}</em>
-                  </div>
-                ))
-              ) : (
-                <p className="muted">还没有记录。今天先把第一刀补上。</p>
-              )}
+            <div className="history-block">
+              <div className="history-block-title">
+                <strong>开骂记录</strong>
+                <span>点一条，继续对话</span>
+              </div>
+              <div className="history-list">
+                {stats?.aiHistory.length ? (
+                  stats.aiHistory.map((item) => (
+                    <button
+                      className="history-row ai-history-row"
+                      key={item.id}
+                      type="button"
+                      onClick={() => restoreAiHistory(item)}
+                    >
+                      <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                      <strong>
+                        {getHistoryMode(item) === 'broGroup'
+                          ? '兄弟团'
+                          : '直接回复'}
+                      </strong>
+                      <em>{item.input}</em>
+                    </button>
+                  ))
+                ) : (
+                  <p className="muted">还没有开骂记录。先去工具箱把第一段剧情丢进去。</p>
+                )}
+              </div>
+            </div>
+
+            <div className="history-block">
+              <div className="history-block-title">
+                <strong>打卡记录</strong>
+                <span>只记录指数，不进入对话</span>
+              </div>
+              <div className="history-list">
+                {stats?.history.length ? (
+                  stats.history.map((item) => (
+                    <div className="history-row" key={item.id}>
+                      <span>{item.dateKey}</span>
+                      <strong>{item.score}/12</strong>
+                      <em>{item.level}</em>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">还没有记录。今天先把第一刀补上。</p>
+                )}
+              </div>
             </div>
           </section>
         </section>

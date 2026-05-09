@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getAdminProvider, getUserProvider, providerToSummary } from '@/lib/provider'
 import { getDateKey, getPreviousDateKey } from '@/lib/scoring'
 import { getRegistrationMode } from '@/lib/settings'
+import { stripThinkingContent, stripThinkingFromValue } from '@/lib/thinking-filter'
 
 export async function GET() {
   const user = await getCurrentUser()
@@ -21,6 +22,7 @@ export async function GET() {
       userProvider,
       adminProvider,
       registrationMode,
+      aiHistory,
     ] = await Promise.all([
       prisma.checkIn.findMany({
         where: { userId: user.id },
@@ -32,6 +34,11 @@ export async function GET() {
       getUserProvider(user.id),
       getAdminProvider(),
       getRegistrationMode(),
+      prisma.aiReflection.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      }),
     ])
 
     const todayKey = getDateKey()
@@ -55,6 +62,11 @@ export async function GET() {
       consecutiveClearDays,
       relapseCount,
       history,
+      aiHistory: aiHistory.map((item) => ({
+        ...item,
+        input: stripThinkingContent(item.input),
+        output: stripThinkingFromValue(item.output),
+      })),
       dailyContent,
       brothers,
       appState: {

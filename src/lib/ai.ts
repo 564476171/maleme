@@ -7,6 +7,10 @@ import {
   AI_MODES,
 } from '@/lib/content'
 import { getProviderApiKey } from '@/lib/provider'
+import {
+  createThinkingContentFilter,
+  stripThinkingContent,
+} from '@/lib/thinking-filter'
 
 export const aiRequestSchema = z.object({
   mode: z.enum(['broGroup', 'directReply']),
@@ -109,8 +113,10 @@ function extractJson(text: string) {
 }
 
 function parseAiResult(mode: AiMode, text: string, brothers: BrotherPersona[]) {
+  const visibleText = stripThinkingContent(text)
+
   try {
-    const parsed = JSON.parse(extractJson(text))
+    const parsed = JSON.parse(extractJson(visibleText))
 
     if (mode === 'broGroup' && Array.isArray(parsed.replies)) {
       return {
@@ -126,7 +132,9 @@ function parseAiResult(mode: AiMode, text: string, brothers: BrotherPersona[]) {
                 typeof reply.brotherId === 'string' ? reply.brotherId : '',
               name: typeof reply.name === 'string' ? reply.name : '兄弟',
               content:
-                typeof reply.content === 'string' ? reply.content : '',
+                typeof reply.content === 'string'
+                  ? stripThinkingContent(reply.content)
+                  : '',
             }),
           )
           .filter((reply: { content: string }) => reply.content.trim()),
@@ -136,7 +144,7 @@ function parseAiResult(mode: AiMode, text: string, brothers: BrotherPersona[]) {
     if (mode === 'directReply' && typeof parsed.content === 'string') {
       return {
         mode,
-        content: parsed.content,
+        content: stripThinkingContent(parsed.content),
       } satisfies AiResult
     }
   } catch {
@@ -149,14 +157,14 @@ function parseAiResult(mode: AiMode, text: string, brothers: BrotherPersona[]) {
       replies: brothers.map((brother) => ({
         brotherId: brother.id,
         name: brother.name,
-        content: `${brother.name}：${text}`,
+        content: `${brother.name}：${visibleText}`,
       })),
     } satisfies AiResult
   }
 
   return {
     mode,
-    content: text,
+    content: visibleText,
   } satisfies AiResult
 }
 
@@ -192,6 +200,11 @@ export function buildSystemPrompt(mode: AiMode, brothers: BrotherPersona[]) {
 function formatChatHistory(messages: AiChatMessage[]) {
   return messages
     .slice(-14)
+    .map((message) => ({
+      ...message,
+      content: stripThinkingContent(message.content),
+    }))
+    .filter((message) => message.content.trim())
     .map((message) => {
       const name = message.name ? `${message.name}：` : ''
       const role =
@@ -303,89 +316,12 @@ export async function createChatCompletionStream({
   return response.body
 }
 
-function findTag(pattern: RegExp, value: string) {
-  const match = pattern.exec(value)
-
-  if (!match || match.index < 0) {
-    return null
-  }
-
-  return {
-    index: match.index,
-    length: match[0].length,
-  }
-}
-
-function partialThinkingTagIndex(value: string) {
-  const candidates = ['<think', '<thinking', '</think', '</thinking']
-  const start = Math.max(0, value.length - '</thinking'.length)
-
-  for (let index = value.length - 1; index >= start; index -= 1) {
-    const suffix = value.slice(index).toLowerCase()
-
-    if (candidates.some((candidate) => candidate.startsWith(suffix))) {
-      return index
-    }
-  }
-
-  return -1
-}
-
-function createThinkingTagFilter() {
-  let buffer = ''
-  let insideThinking = false
-
-  return {
-    push(value: string) {
-      buffer += value
-      let visible = ''
-
-      while (buffer) {
-        if (insideThinking) {
-          const closeTag = findTag(/<\/thinking?>/i, buffer)
-
-          if (!closeTag) {
-            buffer = buffer.slice(-'</thinking>'.length)
-            break
-          }
-
-          buffer = buffer.slice(closeTag.index + closeTag.length)
-          insideThinking = false
-          continue
-        }
-
-        const openTag = findTag(/<thinking?\b[^>]*>/i, buffer)
-
-        if (!openTag) {
-          const partialIndex = partialThinkingTagIndex(buffer)
-
-          if (partialIndex >= 0) {
-            visible += buffer.slice(0, partialIndex)
-            buffer = buffer.slice(partialIndex)
-            break
-          }
-
-          visible += buffer
-          buffer = ''
-          break
-        }
-
-        visible += buffer.slice(0, openTag.index)
-        buffer = buffer.slice(openTag.index + openTag.length)
-        insideThinking = true
-      }
-
-      return visible
-    },
-  }
-}
-
 export async function* readOpenAiStream(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<string> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
-  const thinkingFilter = createThinkingTagFilter()
+  const thinkingFilter = createThinkingContentFilter()
   let buffer = ''
 
   while (true) {
@@ -421,6 +357,12 @@ export async function* readOpenAiStream(
         // Ignore malformed provider chunks and keep the stream alive.
       }
     }
+  }
+
+  const flushed = thinkingFilter.flush()
+
+  if (flushed) {
+    yield flushed
   }
 }
 

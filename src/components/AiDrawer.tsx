@@ -1,8 +1,9 @@
 'use client'
 
-import { FormEvent } from 'react'
+import { FormEvent, useEffect } from 'react'
 import { Send, X } from 'lucide-react'
 import { type AiMode, type BrotherPersona } from '@/lib/content'
+import { stripThinkingContent } from '@/lib/thinking-filter'
 
 export type ChatMessage = {
   id: string
@@ -43,6 +44,19 @@ export default function AiDrawer({
   onFollowUpInputChange,
   onFollowUpSubmit,
 }: AiDrawerProps) {
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open])
+
   if (!open) {
     return null
   }
@@ -102,7 +116,10 @@ export default function AiDrawer({
                   {message.name ?? (message.role === 'user' ? '你' : '骂了么')}
                   {message.streaming ? ' 正在输入...' : ''}
                 </span>
-                <p>{message.content || (message.streaming ? '...' : '')}</p>
+                <p>
+                  {stripThinkingContent(message.content) ||
+                    (message.streaming ? '...' : '')}
+                </p>
               </article>
             ))
           ) : (
@@ -118,31 +135,39 @@ export default function AiDrawer({
 
         <form className="drawer-compose" onSubmit={onFollowUpSubmit}>
           {mode === 'broGroup' ? (
-            <div className="drawer-brother-picker" aria-label="本轮加入对话的兄弟">
-              {brothers.map((brother) => {
-                const checked = followUpBrotherIds.includes(brother.id)
+            <div className="drawer-compose-brothers">
+              <span>本轮兄弟</span>
+              <div
+                className="drawer-brother-picker"
+                aria-label="本轮加入对话的兄弟"
+              >
+                {brothers.map((brother) => {
+                  const checked = followUpBrotherIds.includes(brother.id)
 
-                return (
-                  <label className={checked ? 'selected' : ''} key={brother.id}>
-                    <input
-                      checked={checked}
-                      disabled={followUpLoading}
-                      type="checkbox"
-                      onChange={(event) =>
-                        onFollowUpBrotherIdsChange(
-                          event.target.checked
-                            ? [...followUpBrotherIds, brother.id]
-                            : followUpBrotherIds.filter((id) => id !== brother.id),
-                        )
-                      }
-                    />
-                    <span>
-                      {brother.name}
-                      {brother.mbti ? ` / ${brother.mbti}` : ''}
-                    </span>
-                  </label>
-                )
-              })}
+                  return (
+                    <label className={checked ? 'selected' : ''} key={brother.id}>
+                      <input
+                        checked={checked}
+                        disabled={followUpLoading}
+                        type="checkbox"
+                        onChange={(event) =>
+                          onFollowUpBrotherIdsChange(
+                            event.target.checked
+                              ? [...followUpBrotherIds, brother.id]
+                              : followUpBrotherIds.filter(
+                                  (id) => id !== brother.id,
+                                ),
+                          )
+                        }
+                      />
+                      <span>
+                        {brother.name}
+                        {brother.mbti ? ` / ${brother.mbti}` : ''}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
           ) : null}
           <div className="drawer-compose-row">

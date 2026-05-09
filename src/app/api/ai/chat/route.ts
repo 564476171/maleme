@@ -11,6 +11,7 @@ import { type AiMode, type BrotherPersona } from '@/lib/content'
 import { getEnabledBrothers } from '@/lib/content-db'
 import { prisma } from '@/lib/prisma'
 import { resolveProviderForUser } from '@/lib/provider'
+import { stripThinkingContent } from '@/lib/thinking-filter'
 
 type StreamTarget = {
   brother?: BrotherPersona
@@ -127,7 +128,7 @@ async function streamTarget({
   return {
     brotherId: target.brother?.id,
     name: target.name,
-    content,
+    content: stripThinkingContent(content),
   }
 }
 

@@ -734,7 +734,7 @@ textarea::placeholder {
 }
 
 .provider-choice label,
-.brother-picker label {
+.brother-option {
   min-height: 56px;
   display: flex;
   align-items: flex-start;
@@ -746,9 +746,36 @@ textarea::placeholder {
   box-shadow: var(--shadow-sm);
 }
 
+.brother-option.info-active {
+  background: var(--paper-strong);
+  box-shadow: 1px 1px 0 var(--ink);
+  transform: translate(2px, 2px);
+}
+
+.brother-option label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .provider-choice input,
 .brother-picker input {
   margin-top: 3px;
+}
+
+.brother-info-button {
+  min-height: 38px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  border: 3px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-strong);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .disabled-choice {
@@ -762,14 +789,84 @@ textarea::placeholder {
   line-height: 1.36;
 }
 
+.brother-picker small {
+  font: inherit;
+}
+
 .brother-picker em {
   color: var(--blue);
   font-style: normal;
   font-weight: 700;
 }
 
+.brother-preview {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 3px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.brother-preview div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.brother-preview strong {
+  font-family: var(--font-heading);
+  font-size: 25px;
+}
+
+.brother-preview span {
+  padding: 2px 8px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--blue);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.brother-preview p {
+  line-height: 1.42;
+}
+
 .history-panel {
   margin-top: 22px;
+}
+
+.history-block {
+  display: grid;
+  gap: 10px;
+}
+
+.history-block + .history-block {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 3px solid var(--line);
+}
+
+.history-block-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-block-title strong {
+  font-family: var(--font-heading);
+  font-size: 24px;
+}
+
+.history-block-title span {
+  color: var(--muted);
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .history-list {
@@ -783,11 +880,35 @@ textarea::placeholder {
   grid-template-columns: 130px 86px 1fr;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 11px 14px;
   border: 3px solid var(--line);
   border-radius: var(--radius-sm);
   background: #fff;
+  color: var(--ink);
   box-shadow: var(--shadow-sm);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+button.history-row {
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+button.history-row:hover {
+  background: var(--paper-strong);
+  box-shadow: 1px 1px 0 var(--ink);
+  transform: translate(2px, 2px);
+}
+
+.ai-history-row {
+  grid-template-columns: 130px 96px minmax(0, 1fr);
 }
 
 .history-row strong {
@@ -1104,6 +1225,14 @@ textarea::placeholder {
   pointer-events: auto;
 }
 
+body:has(.drawer-shell.open) .sos-button {
+  display: none;
+}
+
+body:has(.drawer-shell.open) {
+  overflow: hidden;
+}
+
 .drawer-backdrop {
   position: absolute;
   inset: 0;
@@ -1121,15 +1250,17 @@ textarea::placeholder {
   top: 0;
   right: 0;
   width: min(560px, calc(100% - 28px));
-  height: 100%;
+  max-height: 100dvh;
+  height: 100dvh;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
   gap: 16px;
   padding: 22px;
   border-left: 4px solid #000;
   background: var(--paper);
   color: var(--ink);
   box-shadow: -8px 0 0 #000;
+  overflow: hidden;
   transform: translateX(calc(100% + 16px));
   transition: transform 220ms ease;
 }
@@ -1139,6 +1270,7 @@ textarea::placeholder {
 }
 
 .drawer-head {
+  min-height: 0;
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -1218,13 +1350,29 @@ textarea::placeholder {
 
 .chat-message p {
   line-height: 1.48;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .drawer-compose {
+  min-height: 0;
   display: grid;
   gap: 12px;
   padding-top: 14px;
   border-top: 3px solid var(--line);
+}
+
+.drawer-compose-brothers {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.drawer-compose-brothers > span {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .drawer-brother-picker {
@@ -1234,7 +1382,7 @@ textarea::placeholder {
 }
 
 .drawer-brother-picker label {
-  min-height: 42px;
+  min-height: 48px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1367,6 +1515,10 @@ textarea::placeholder {
     padding-top: 12px;
   }
 
+  .single-panel-view {
+    margin-inline: -4px;
+  }
+
   .topbar {
     align-items: flex-start;
     flex-direction: column;
@@ -1411,9 +1563,54 @@ textarea::placeholder {
     padding: 18px;
   }
 
+  .view-tools .panel {
+    padding: 14px;
+  }
+
+  .view-tools .section-title {
+    margin-bottom: 12px;
+  }
+
+  .view-tools .section-title > svg {
+    width: 36px;
+    height: 36px;
+    padding: 7px;
+  }
+
+  .view-tools .eyebrow {
+    padding: 3px 8px;
+    font-size: 14px;
+  }
+
+  .view-tools h2 {
+    font-size: 21px;
+  }
+
+  .view-tools .mode-tabs {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .view-tools .mode-tab {
+    min-height: 46px;
+    padding: 7px;
+    font-size: 16px;
+  }
+
+  .view-tools .provider-choice {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .view-tools .provider-choice label {
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+
   .question-row,
   .provider-choice label,
-  .brother-picker label,
+  .brother-option,
   .mode-tab,
   .history-row,
   .primary-button,
@@ -1421,6 +1618,90 @@ textarea::placeholder {
   .ghost-button,
   .ghost-link {
     min-height: 48px;
+  }
+
+  .provider-choice label,
+  .brother-option {
+    align-items: center;
+    padding: 11px 12px;
+  }
+
+  .brother-picker {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    overflow-x: auto;
+    padding: 2px 2px 8px;
+    scroll-padding-inline: 2px;
+    scrollbar-width: thin;
+    overscroll-behavior-x: contain;
+  }
+
+  .brother-option {
+    min-width: max-content;
+    max-width: none;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  .brother-option.info-active {
+    background: var(--paper-strong);
+  }
+
+  .brother-option label {
+    align-items: center;
+    gap: 7px;
+  }
+
+  .brother-info-button {
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: 14px;
+  }
+
+  .brother-picker span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 16px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .brother-picker small {
+    display: none;
+  }
+
+  .brother-preview {
+    gap: 5px;
+    margin-bottom: 10px;
+    padding: 10px 11px;
+  }
+
+  .brother-preview strong {
+    font-size: 21px;
+  }
+
+  .brother-preview span {
+    font-size: 13px;
+  }
+
+  .brother-preview p {
+    font-size: 16px;
+    line-height: 1.32;
+  }
+
+  .view-tools .ai-form textarea {
+    min-height: 112px;
+    padding: 10px 12px;
+  }
+
+  .view-tools .ai-form .primary-button {
+    min-height: 48px;
+    margin-top: 10px;
   }
 
   .question-row input,
@@ -1449,6 +1730,16 @@ textarea::placeholder {
   .history-row {
     grid-template-columns: 1fr;
     gap: 5px;
+  }
+
+  .history-block-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ai-history-row {
+    grid-template-columns: 1fr;
   }
 
   .ghost-button,
@@ -1498,18 +1789,65 @@ textarea::placeholder {
   }
 
   .ai-drawer {
-    top: auto;
-    bottom: 0;
+    inset: 0;
     width: 100%;
-    height: min(86svh, 720px);
-    border-top: 4px solid #000;
+    max-width: none;
+    max-height: 100dvh;
+    height: 100dvh;
+    gap: 10px;
+    padding: max(10px, env(safe-area-inset-top)) 10px
+      max(10px, env(safe-area-inset-bottom));
+    border-top: 0;
     border-left: 0;
-    box-shadow: 0 -8px 0 #000;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: hidden;
     transform: translateY(calc(100% + 16px));
   }
 
   .drawer-shell.open .ai-drawer {
     transform: translateY(0);
+  }
+
+  .drawer-head {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 2px 10px;
+  }
+
+  .drawer-head h2 {
+    margin-top: 5px;
+    font-size: 22px;
+  }
+
+  .drawer-head .eyebrow {
+    padding: 3px 8px;
+    font-size: 14px;
+  }
+
+  .drawer-tags {
+    gap: 6px;
+    margin-top: 7px;
+    max-height: 34px;
+    overflow: hidden;
+  }
+
+  .drawer-tags span {
+    padding: 3px 7px;
+    font-size: 13px;
+  }
+
+  .chat-list {
+    gap: 10px;
+    padding: 2px 2px 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chat-message {
+    padding: 10px 12px;
+    font-size: 17px;
   }
 
   .chat-message.user,
@@ -1518,13 +1856,57 @@ textarea::placeholder {
     margin-inline: 0;
   }
 
-  .drawer-compose-row {
-    grid-template-columns: 1fr;
+  .drawer-compose {
+    gap: 8px;
+    padding: 10px 2px 0;
+    background: var(--paper);
   }
 
-  .drawer-compose textarea,
+  .drawer-compose-brothers {
+    gap: 5px;
+  }
+
+  .drawer-compose-brothers > span {
+    font-size: 13px;
+  }
+
+  .drawer-brother-picker {
+    flex-wrap: nowrap;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 0 2px 7px;
+    scroll-padding-inline: 2px;
+    scrollbar-width: thin;
+  }
+
+  .drawer-brother-picker label {
+    min-height: 48px;
+    flex: 0 0 auto;
+    padding: 8px 10px;
+    font-size: 15px;
+  }
+
+  .drawer-brother-picker input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .drawer-compose-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .drawer-compose textarea {
+    min-height: 74px;
+    max-height: 108px;
+    padding: 10px 12px;
+    font-size: 17px;
+  }
+
   .drawer-compose .primary-button {
-    min-height: 56px;
+    width: 100%;
+    min-height: 50px;
+    margin-top: 0;
   }
 
   .sos-button {

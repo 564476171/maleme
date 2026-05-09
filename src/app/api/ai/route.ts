@@ -1,9 +1,28 @@
 import { NextResponse } from 'next/server'
 import { aiRequestSchema, generateAiResponse } from '@/lib/ai'
 import { getCurrentUser } from '@/lib/auth'
+import { type BrotherReply } from '@/lib/content'
 import { getEnabledBrothers } from '@/lib/content-db'
 import { prisma } from '@/lib/prisma'
 import { resolveProviderForUser } from '@/lib/provider'
+import { stripThinkingContent } from '@/lib/thinking-filter'
+
+function cleanOutput(output: Awaited<ReturnType<typeof generateAiResponse>>) {
+  if ('replies' in output) {
+    return {
+      ...output,
+      replies: output.replies.map((reply: BrotherReply) => ({
+        ...reply,
+        content: stripThinkingContent(reply.content),
+      })),
+    }
+  }
+
+  return {
+    ...output,
+    content: stripThinkingContent(output.content),
+  }
+}
 
 export async function POST(request: Request) {
   const user = await getCurrentUser()
@@ -36,12 +55,12 @@ export async function POST(request: Request) {
       user,
       source: parsed.data.providerSource,
     })
-    const output = await generateAiResponse({
+    const output = cleanOutput(await generateAiResponse({
       mode: parsed.data.mode,
       input: parsed.data.input,
       provider,
       brothers: selectedBrothers,
-    })
+    }))
 
     await prisma.aiReflection.create({
       data: {
