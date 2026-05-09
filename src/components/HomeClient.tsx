@@ -23,7 +23,6 @@ import {
   getDailyRoast,
   getDailyTask,
   type AiMode,
-  type AiResult,
   type AppState,
   type AppUser,
   type BrotherPersona,
@@ -248,61 +247,12 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
     setIsGenerating(true)
 
     try {
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode,
-          input: trimmedInput,
-          providerSource,
-          brotherIds: selectedBrotherIds,
-        }),
+      await runStreamingChat({
+        input: trimmedInput,
+        brotherIds: selectedBrotherIds,
+        messages: [],
+        errorFallback: '生成失败。先把聊天框关了，别趁乱发消息。',
       })
-      const payload = await response.json()
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? '生成失败')
-      }
-
-      const result = payload as AiResult
-      const notices: ChatMessage[] = []
-
-      if (result.missingProvider) {
-        notices.push({
-          id: `notice-provider-${Date.now()}`,
-          role: 'system',
-          tone: 'warning',
-          content: '先配置可用模型，再让它开骂。',
-        })
-      }
-
-      if (result.safetyNotice) {
-        notices.push({
-          id: `notice-safety-${Date.now()}`,
-          role: 'system',
-          tone: 'warning',
-          content: '检测到安全风险，已切换为保护性建议。',
-        })
-      }
-
-      const replies: ChatMessage[] =
-        result.mode === 'directReply'
-          ? [
-              {
-                id: `assistant-${Date.now()}`,
-                role: 'assistant',
-                name: '直接回复',
-                content: result.content,
-              },
-            ]
-          : result.replies.map((reply, index) => ({
-              id: `assistant-${reply.brotherId}-${Date.now()}-${index}`,
-              role: 'assistant',
-              name: reply.name,
-              content: reply.content,
-            }))
-
-      setChatMessages([userMessage, ...notices, ...replies])
     } catch (error) {
       const message =
         error instanceof Error
@@ -377,6 +327,104 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
     return { events, rest }
   }
 
+  async function runStreamingChat({
+    input,
+    brotherIds,
+    messages,
+    errorFallback,
+  }: {
+    input: string
+    brotherIds: string[]
+    messages: ChatMessage[]
+    errorFallback: string
+  }) {
+    const response = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode,
+        input,
+        providerSource,
+        brotherIds,
+        messages: messages
+          .filter((message) => message.content.trim())
+          .map((message) => ({
+            role: message.role,
+            name: message.name,
+            content: message.content,
+            brotherId: message.brotherId,
+          })),
+      }),
+    })
+
+    if (!response.ok || !response.body) {
+      const payload = await response.json().catch(() => ({}))
+      throw new Error(payload.error ?? errorFallback)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { value, done } = await reader.read()
+
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const parsed = parseSseEvents(buffer)
+      buffer = parsed.rest
+
+      for (const item of parsed.events) {
+        const messageId =
+          typeof item.data.messageId === 'string'
+            ? item.data.messageId
+            : `system-${Date.now()}`
+
+        if (item.event === 'message_start') {
+          setChatMessages((current) => [
+            ...current,
+            {
+              id: messageId,
+              role: 'assistant',
+              name:
+                typeof item.data.name === 'string'
+                  ? item.data.name
+                  : mode === 'broGroup'
+                    ? '兄弟'
+                    : '直接回复',
+              brotherId:
+                typeof item.data.brotherId === 'string'
+                  ? item.data.brotherId
+                  : undefined,
+              content: '',
+              streaming: true,
+            },
+          ])
+        }
+
+        if (
+          item.event === 'message_delta' &&
+          typeof item.data.delta === 'string'
+        ) {
+          appendToMessage(messageId, item.data.delta)
+        }
+
+        if (item.event === 'message_done') {
+          finishMessage(messageId)
+        }
+
+        if (
+          (item.event === 'warning' || item.event === 'error') &&
+          typeof item.data.content === 'string'
+        ) {
+          upsertSystemMessage(messageId, item.data.content)
+          finishMessage(messageId)
+        }
+      }
+    }
+  }
+
   async function submitFollowUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const trimmedInput = followUpInput.trim()
@@ -402,91 +450,12 @@ export default function HomeClient({ initialUser }: { initialUser: AppUser }) {
     setIsFollowUpGenerating(true)
 
     try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode,
-          input: trimmedInput,
-          providerSource,
-          brotherIds: followUpBrotherIds,
-          messages: history
-            .filter((message) => message.content.trim())
-            .map((message) => ({
-              role: message.role,
-              name: message.name,
-              content: message.content,
-              brotherId: message.brotherId,
-            })),
-        }),
+      await runStreamingChat({
+        input: trimmedInput,
+        brotherIds: followUpBrotherIds,
+        messages: history,
+        errorFallback: '追问失败',
       })
-
-      if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => ({}))
-        throw new Error(payload.error ?? '追问失败')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { value, done } = await reader.read()
-
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const parsed = parseSseEvents(buffer)
-        buffer = parsed.rest
-
-        for (const item of parsed.events) {
-          const messageId =
-            typeof item.data.messageId === 'string'
-              ? item.data.messageId
-              : `system-${Date.now()}`
-
-          if (item.event === 'message_start') {
-            setChatMessages((current) => [
-              ...current,
-              {
-                id: messageId,
-                role: 'assistant',
-                name:
-                  typeof item.data.name === 'string'
-                    ? item.data.name
-                    : mode === 'broGroup'
-                      ? '兄弟'
-                      : '直接回复',
-                brotherId:
-                  typeof item.data.brotherId === 'string'
-                    ? item.data.brotherId
-                    : undefined,
-                content: '',
-                streaming: true,
-              },
-            ])
-          }
-
-          if (
-            item.event === 'message_delta' &&
-            typeof item.data.delta === 'string'
-          ) {
-            appendToMessage(messageId, item.data.delta)
-          }
-
-          if (item.event === 'message_done') {
-            finishMessage(messageId)
-          }
-
-          if (
-            (item.event === 'warning' || item.event === 'error') &&
-            typeof item.data.content === 'string'
-          ) {
-            upsertSystemMessage(messageId, item.data.content)
-            finishMessage(messageId)
-          }
-        }
-      }
     } catch (error) {
       upsertSystemMessage(
         `error-${Date.now()}`,

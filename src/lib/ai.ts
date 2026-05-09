@@ -219,7 +219,8 @@ export function buildFollowUpSystemPrompt({
     '不要攻击 ENFP、女性、任何人格类型或具体对象。重点放在用户自己的模式。',
     '不要替对方确认喜欢或不喜欢。只区分事实、脑补和可执行行动。',
     '不要鼓励骚扰、试探、跟踪、威胁或突破边界。',
-    '这是多轮对话 follow-up。直接输出自然中文，不要 JSON，不要 Markdown 表格。',
+    '这是流式对话。直接输出自然中文，不要 JSON，不要 Markdown 表格。',
+    '不要输出 <think>、<thinking> 或任何思考过程标签。',
   ]
 
   if (mode === 'broGroup' && brother) {
@@ -229,13 +230,13 @@ export function buildFollowUpSystemPrompt({
       `人设：${brother.description}`,
       `常用语气：${brother.catchphrase || '无'}`,
       '只代表这个兄弟发言，不要替其他兄弟发言。',
-      '回复控制在 80-180 字，先骂醒，再给下一步。',
+      '回复控制在 80-180 字，先骂醒，再给下一步。首轮也要直接进入观点，不要寒暄。',
     ].join('\n')
   }
 
   return [
     ...shared,
-    '当前是直接回复模式。回复控制在 100-220 字，包含现实判断、嘴毒提醒和下一步行动。',
+    '当前是直接回复模式。回复控制在 100-220 字，包含现实判断、嘴毒提醒和下一步行动。首轮也要直接进入观点，不要寒暄。',
   ].join('\n')
 }
 
@@ -261,8 +262,10 @@ export function buildFollowUpMessages({
       role: 'user',
       content: [
         history ? `历史对话：\n${history}` : '历史对话：无',
-        `用户最新追问：${input}`,
-        '请基于历史上下文继续骂醒，不要重复上一轮原话。',
+        `用户最新输入：${input}`,
+        history
+          ? '请基于历史上下文继续骂醒，不要重复上一轮原话。'
+          : '这是首轮开骂，请直接给出清醒回应。',
       ].join('\n\n'),
     },
   ]
@@ -300,11 +303,89 @@ export async function createChatCompletionStream({
   return response.body
 }
 
+function findTag(pattern: RegExp, value: string) {
+  const match = pattern.exec(value)
+
+  if (!match || match.index < 0) {
+    return null
+  }
+
+  return {
+    index: match.index,
+    length: match[0].length,
+  }
+}
+
+function partialThinkingTagIndex(value: string) {
+  const candidates = ['<think', '<thinking', '</think', '</thinking']
+  const start = Math.max(0, value.length - '</thinking'.length)
+
+  for (let index = value.length - 1; index >= start; index -= 1) {
+    const suffix = value.slice(index).toLowerCase()
+
+    if (candidates.some((candidate) => candidate.startsWith(suffix))) {
+      return index
+    }
+  }
+
+  return -1
+}
+
+function createThinkingTagFilter() {
+  let buffer = ''
+  let insideThinking = false
+
+  return {
+    push(value: string) {
+      buffer += value
+      let visible = ''
+
+      while (buffer) {
+        if (insideThinking) {
+          const closeTag = findTag(/<\/thinking?>/i, buffer)
+
+          if (!closeTag) {
+            buffer = buffer.slice(-'</thinking>'.length)
+            break
+          }
+
+          buffer = buffer.slice(closeTag.index + closeTag.length)
+          insideThinking = false
+          continue
+        }
+
+        const openTag = findTag(/<thinking?\b[^>]*>/i, buffer)
+
+        if (!openTag) {
+          const partialIndex = partialThinkingTagIndex(buffer)
+
+          if (partialIndex >= 0) {
+            visible += buffer.slice(0, partialIndex)
+            buffer = buffer.slice(partialIndex)
+            break
+          }
+
+          visible += buffer
+          buffer = ''
+          break
+        }
+
+        visible += buffer.slice(0, openTag.index)
+        buffer = buffer.slice(openTag.index + openTag.length)
+        insideThinking = true
+      }
+
+      return visible
+    },
+  }
+}
+
 export async function* readOpenAiStream(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<string> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
+  const thinkingFilter = createThinkingTagFilter()
   let buffer = ''
 
   while (true) {
@@ -330,7 +411,11 @@ export async function* readOpenAiStream(
         const delta = payload?.choices?.[0]?.delta?.content
 
         if (typeof delta === 'string' && delta) {
-          yield delta
+          const visibleDelta = thinkingFilter.push(delta)
+
+          if (visibleDelta) {
+            yield visibleDelta
+          }
         }
       } catch {
         // Ignore malformed provider chunks and keep the stream alive.

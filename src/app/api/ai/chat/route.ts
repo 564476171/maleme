@@ -219,11 +219,13 @@ export async function POST(request: Request) {
         await prisma.aiReflection.create({
           data: {
             userId: user.id,
-            mode: `${parsed.data.mode}:followUp`,
+            mode: parsed.data.messages.length
+              ? `${parsed.data.mode}:followUp`
+              : parsed.data.mode,
             input: parsed.data.input,
             output: {
               mode: parsed.data.mode,
-              followUp: true,
+              followUp: parsed.data.messages.length > 0,
               replies,
             },
           },
